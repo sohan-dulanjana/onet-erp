@@ -1,2 +1,0 @@
-import { IsDateString, IsEnum, IsNumber, IsOptional, IsString, Min } from 'class-validator'; import { PriceUnit } from '@prisma/client';
-export class CreateMaterialPriceDto { @IsString() materialId!:string; @IsOptional() @IsNumber() thicknessMm?:number; @IsOptional() @IsString() sheetSpecId?:string; @IsOptional() @IsString() supplierId?:string; @IsEnum(PriceUnit) unit!:PriceUnit; @IsNumber() @Min(0) unitPrice!:number; @IsOptional() @IsString() currency?:string; @IsDateString() validFrom!:string; @IsOptional() @IsString() source?:string; }

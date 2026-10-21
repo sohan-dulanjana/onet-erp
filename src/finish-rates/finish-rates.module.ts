@@ -1,1 +1,0 @@
-import {Module} from '@nestjs/common';import {FinishRatesController} from './finish-rates.controller';import {FinishRatesService} from './finish-rates.service';@Module({controllers:[FinishRatesController],providers:[FinishRatesService],exports:[FinishRatesService]})export class FinishRatesModule{}
