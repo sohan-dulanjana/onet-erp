@@ -1,0 +1,1 @@
+import {Module} from '@nestjs/common';import {CostingController} from './costing.controller';import {CostingService} from './costing.service';import {PriceResolverService} from './price-resolver.service';@Module({controllers:[CostingController],providers:[CostingService,PriceResolverService],exports:[CostingService,PriceResolverService]})export class CostingModule{}

@@ -1,0 +1,446 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum MaterialType {
+  ZN_COATED
+  ZNAL_COATED
+  STAINLESS_STEEL
+  ALUMINIUM
+  OTHER
+}
+
+enum TemplateStatus {
+  DRAFT
+  PUBLISHED
+  RETIRED
+}
+
+enum EstimateStatus {
+  DRAFT
+  CALCULATED
+  APPROVED
+  ARCHIVED
+}
+
+enum QuotationStatus {
+  DRAFT
+  ISSUED
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  CANCELLED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PARTIALLY_PAID
+  PAID
+  VOID
+}
+
+enum InventoryMovementType {
+  RECEIPT
+  ISSUE
+  ADJUSTMENT
+}
+
+enum PriceUnit {
+  SHEET
+  EACH
+  METRE
+  SQUARE_FOOT
+  KILOGRAM
+  HOUR
+  FIXED
+}
+
+model User {
+  id           String       @id @default(cuid())
+  email        String       @unique
+  displayName  String
+  passwordHash String
+  isActive     Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  roles        UserRole[]
+  estimates    Estimate[]   @relation("EstimateCreator")
+  auditEvents  AuditEvent[]
+}
+
+model Role {
+  id    String     @id @default(cuid())
+  name  String     @unique
+  users UserRole[]
+}
+
+model UserRole {
+  userId String
+  roleId String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+}
+
+model Material {
+  id                  String              @id @default(cuid())
+  code                String              @unique
+  name                String
+  type                MaterialType
+  isActive            Boolean             @default(true)
+  prices              MaterialPrice[]
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  materialThicknesses MaterialThickness[]
+}
+
+model MaterialThickness {
+  id          String  @id @default(cuid())
+  materialId  String
+  thicknessMm Decimal @db.Decimal(8, 3)
+
+  material Material @relation(fields: [materialId], references: [id], onDelete: Restrict)
+
+  @@unique([materialId, thicknessMm])
+}
+
+model SheetSpec {
+  id       String          @id @default(cuid())
+  code     String          @unique
+  name     String
+  widthMm  Decimal         @db.Decimal(10, 2)
+  heightMm Decimal         @db.Decimal(10, 2)
+  isActive Boolean         @default(true)
+  prices   MaterialPrice[]
+}
+
+model Supplier {
+  id       String          @id @default(cuid())
+  code     String          @unique
+  name     String
+  isActive Boolean         @default(true)
+  prices   MaterialPrice[]
+}
+
+model MaterialPrice {
+  id          String    @id @default(cuid())
+  materialId  String
+  thicknessMm Decimal?  @db.Decimal(8, 3)
+  sheetSpecId String?
+  supplierId  String?
+  unit        PriceUnit
+  unitPrice   Decimal   @db.Decimal(14, 4)
+  currency    String    @default("LKR")
+  validFrom   DateTime
+  validTo     DateTime?
+  source      String?
+  createdAt   DateTime  @default(now())
+
+  material  Material   @relation(fields: [materialId], references: [id], onDelete: Restrict)
+  sheetSpec SheetSpec? @relation(fields: [sheetSpecId], references: [id], onDelete: Restrict)
+  supplier  Supplier?  @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+
+  @@index([materialId, thicknessMm, validFrom])
+}
+
+model HardwareItem {
+  id       String          @id @default(cuid())
+  code     String          @unique
+  name     String
+  unit     PriceUnit       @default(EACH)
+  isActive Boolean         @default(true)
+  prices   HardwarePrice[]
+}
+
+model HardwarePrice {
+  id             String    @id @default(cuid())
+  hardwareItemId String
+  unitPrice      Decimal   @db.Decimal(14, 4)
+  currency       String    @default("LKR")
+  validFrom      DateTime
+  validTo        DateTime?
+
+  hardwareItem HardwareItem @relation(fields: [hardwareItemId], references: [id], onDelete: Restrict)
+
+  @@index([hardwareItemId, validFrom])
+}
+
+model FinishRate {
+  id          String    @id @default(cuid())
+  code        String
+  name        String
+  ratePerSqFt Decimal   @db.Decimal(14, 4)
+  currency    String    @default("LKR")
+  coats       Int       @default(1)
+  sides       Int       @default(1)
+  validFrom   DateTime
+  validTo     DateTime?
+
+  @@index([code, validFrom, validTo])
+}
+
+model CostPolicy {
+  id                String   @id @default(cuid())
+  code              String   @unique
+  name              String
+  sheetWastagePct   Decimal  @default(0) @db.Decimal(7, 4)
+  defaultMarginPct  Decimal  @default(0) @db.Decimal(7, 4)
+  roundingIncrement Decimal  @default(10) @db.Decimal(12, 2)
+  currency          String   @default("LKR")
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model ProductFamily {
+  id        String            @id @default(cuid())
+  code      String            @unique
+  name      String
+  templates ProductTemplate[]
+}
+
+model ProductTemplate {
+  id          String             @id @default(cuid())
+  familyId    String
+  code        String             @unique
+  name        String
+  surfaceType String
+  status      TemplateStatus     @default(DRAFT)
+  family      ProductFamily      @relation(fields: [familyId], references: [id], onDelete: Restrict)
+  revisions   TemplateRevision[]
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+}
+
+model TemplateRevision {
+  id            String         @id @default(cuid())
+  templateId    String
+  revision      Int
+  status        TemplateStatus @default(DRAFT)
+  formulaConfig Json
+  inputSchema   Json
+  publishedAt   DateTime?
+  createdAt     DateTime       @default(now())
+
+  template ProductTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([templateId, revision])
+}
+
+model Estimate {
+  id          String             @id @default(cuid())
+  estimateNo  String             @unique
+  status      EstimateStatus     @default(DRAFT)
+  createdById String
+  createdBy   User               @relation("EstimateCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  revisions   EstimateRevision[]
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+}
+
+model EstimateRevision {
+  id                 String   @id @default(cuid())
+  estimateId         String
+  revision           Int
+  templateRevisionId String?
+  inputSnapshot      Json
+  priceSnapshot      Json
+  componentBreakdown Json
+  costTotal          Decimal  @db.Decimal(16, 4)
+  sellingPrice       Decimal  @db.Decimal(16, 4)
+  currency           String   @default("LKR")
+  calculationVersion String
+  createdAt          DateTime @default(now())
+
+  estimate Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+
+  @@unique([estimateId, revision])
+}
+
+model Customer {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  email     String?
+  phone     String?
+  address   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  quotations Quotation[]
+}
+
+model Quotation {
+  id          String              @id @default(cuid())
+  quotationNo String              @unique
+  customerId  String?
+  status      QuotationStatus     @default(DRAFT)
+  currency    String              @default("LKR")
+  issuedAt    DateTime?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  customer    Customer?           @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  revisions   QuotationRevision[]
+  invoices    Invoice[]
+}
+
+model QuotationRevision {
+  id          String   @id @default(cuid())
+  quotationId String
+  revision    Int
+  snapshot    Json
+  subtotal    Decimal  @db.Decimal(16, 4)
+  total       Decimal  @db.Decimal(16, 4)
+  createdAt   DateTime @default(now())
+
+  quotation Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  lineItems QuotationLineItem[]
+
+  @@unique([quotationId, revision])
+}
+
+model AuditEvent {
+  id         String   @id @default(cuid())
+  actorId    String?
+  action     String
+  entityType String
+  entityId   String
+  beforeData Json?
+  afterData  Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId, createdAt])
+}
+
+
+model QuotationLineItem {
+  id          String   @id @default(cuid())
+  revisionId  String
+  lineNo      Int
+  description String
+  quantity    Int      @default(1)
+  unitPrice   Decimal  @db.Decimal(14, 4)
+  total       Decimal  @db.Decimal(16, 4)
+  revision    QuotationRevision @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+
+  @@unique([revisionId, lineNo])
+}
+
+
+model InventoryItem {
+  id             String              @id @default(cuid())
+  code           String              @unique
+  name           String
+  category       String?
+  unit           String              @default("each")
+  quantityOnHand Decimal             @default(0) @db.Decimal(16, 4)
+  reorderLevel   Decimal             @default(0) @db.Decimal(16, 4)
+  unitCost       Decimal             @default(0) @db.Decimal(16, 4)
+  location       String?
+  isActive       Boolean             @default(true)
+  movements      InventoryMovement[]
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@index([name])
+  @@index([category])
+}
+
+model InventoryMovement {
+  id             String                @id @default(cuid())
+  itemId         String
+  type           InventoryMovementType
+  quantity       Decimal               @db.Decimal(16, 4)
+  unitCost       Decimal?              @db.Decimal(16, 4)
+  reference      String?
+  notes          String?
+  createdAt      DateTime              @default(now())
+  item           InventoryItem         @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  @@index([itemId, createdAt])
+}
+
+model Invoice {
+  id          String          @id @default(cuid())
+  invoiceNo   String          @unique
+  quotationId String
+  status      InvoiceStatus   @default(DRAFT)
+  currency    String          @default("LKR")
+  issuedAt    DateTime?
+  dueAt       DateTime?
+  paidAt      DateTime?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  quotation   Quotation      @relation(fields: [quotationId], references: [id], onDelete: Restrict)
+  revisions   InvoiceRevision[]
+
+  @@index([quotationId, createdAt])
+}
+
+model InvoiceRevision {
+  id        String             @id @default(cuid())
+  invoiceId String
+  revision  Int
+  snapshot  Json
+  subtotal  Decimal            @db.Decimal(16, 4)
+  tax       Decimal            @default(0) @db.Decimal(16, 4)
+  total     Decimal            @db.Decimal(16, 4)
+  createdAt DateTime           @default(now())
+  invoice   Invoice            @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  lineItems InvoiceLineItem[]
+
+  @@unique([invoiceId, revision])
+}
+
+model InvoiceLineItem {
+  id          String          @id @default(cuid())
+  revisionId  String
+  lineNo      Int
+  description String
+  quantity    Decimal         @db.Decimal(16, 4)
+  unitPrice   Decimal         @db.Decimal(16, 4)
+  total       Decimal         @db.Decimal(16, 4)
+  revision    InvoiceRevision @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+
+  @@unique([revisionId, lineNo])
+}
+
+
+model CostingRecord {
+  id        String                  @id @default(cuid())
+  recordNo  String                  @unique
+  formatCode String
+  formatName String
+  createdAt DateTime                @default(now())
+  updatedAt DateTime                @updatedAt
+  revisions CostingRecordRevision[]
+
+  @@index([formatCode, createdAt])
+}
+
+model CostingRecordRevision {
+  id                 String        @id @default(cuid())
+  recordId           String
+  revision           Int
+  inputSnapshot      Json
+  priceSnapshot      Json
+  componentBreakdown Json
+  costTotal          Decimal       @db.Decimal(16, 4)
+  sellingPrice       Decimal       @db.Decimal(16, 4)
+  calculationVersion String
+  notes              String?
+  createdAt          DateTime      @default(now())
+  record             CostingRecord @relation(fields: [recordId], references: [id], onDelete: Cascade)
+
+  @@unique([recordId, revision])
+}

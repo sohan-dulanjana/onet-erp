@@ -1,0 +1,1 @@
+import {Module} from '@nestjs/common';import {CostPoliciesController} from './cost-policies.controller';import {CostPoliciesService} from './cost-policies.service';@Module({controllers:[CostPoliciesController],providers:[CostPoliciesService],exports:[CostPoliciesService]})export class CostPoliciesModule{}
